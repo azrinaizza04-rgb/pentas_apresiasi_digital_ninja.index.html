@@ -1,0 +1,1184 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pentas Digital Apresiasi: Slice Ninja Academy</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Luckiest+Guy&family=Outfit:wght@400;600;800;900&display=swap" rel="stylesheet">
+    
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Canvas Confetti -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+    <!-- Google MediaPipe Hands CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        ninja: ['"Luckiest Guy"', 'cursive', 'sans-serif'],
+                        outfit: ['Outfit', 'sans-serif'],
+                    },
+                    colors: {
+                        ninja: {
+                            red: '#FF2E93',
+                            yellow: '#FFD200',
+                            green: '#00E676',
+                            cyan: '#00E5FF',
+                            dark: '#0F172A',
+                            purple: '#7C3AED'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body {
+            font-family: 'Outfit', sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+            overflow: hidden;
+            background-color: #090D16;
+            color: #ffffff;
+        }
+
+        .font-ninja-title {
+            font-family: 'Luckiest Guy', cursive;
+            letter-spacing: 2px;
+            text-shadow: 0 4px 0 #000, 0 0 20px rgba(255, 46, 147, 0.6);
+        }
+
+        /* Glassmorphic overlay */
+        .glass-hud {
+            background: rgba(15, 23, 42, 0.75);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 2px solid rgba(255, 255, 255, 0.15);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+        }
+
+        .glass-card {
+            background: rgba(255, 255, 255, 0.95);
+            color: #0f172a;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+        }
+
+        /* Ninja blade visual effects */
+        #gameCanvas {
+            touch-action: none;
+        }
+
+        /* Shake animation for wrong slash */
+        @keyframes ninjaShake {
+            0%, 100% { transform: translate(0, 0); }
+            20%, 60% { transform: translate(-15px, 10px); }
+            40%, 80% { transform: translate(15px, -10px); }
+        }
+        .shake-screen {
+            animation: ninjaShake 0.4s ease-in-out;
+        }
+
+        /* Red flash when wrong cut */
+        .flash-red-screen {
+            animation: flashRed 0.5s ease-out;
+        }
+        @keyframes flashRed {
+            0% { background-color: rgba(255, 0, 0, 0.4); }
+            100% { background-color: transparent; }
+        }
+
+        /* Green flash when correct cut */
+        .flash-green-screen {
+            animation: flashGreen 0.5s ease-out;
+        }
+        @keyframes flashGreen {
+            0% { background-color: rgba(0, 230, 118, 0.4); }
+            100% { background-color: transparent; }
+        }
+    </style>
+</head>
+<body class="w-screen h-screen relative flex flex-col justify-between overflow-hidden">
+
+    <!-- Screen Overlay Flashes -->
+    <div id="flashOverlay" class="fixed inset-0 pointer-events-none z-50"></div>
+
+    <!-- Hidden Raw Webcam Feed Video -->
+    <video id="webcamVideo" class="hidden" playsinline></video>
+
+    <!-- Fullscreen Interactive Canvas (Webcam + Fruits + Blade Slash) -->
+    <canvas id="gameCanvas" class="absolute inset-0 w-full h-full z-10 block"></canvas>
+
+    <!-- Top HUD Header -->
+    <header class="relative z-30 p-4 max-w-7xl mx-auto w-full pointer-events-none">
+        <div class="glass-hud rounded-2xl p-3 md:p-4 flex flex-wrap items-center justify-between gap-3 pointer-events-auto">
+            
+            <!-- Game Title Branding -->
+            <div class="flex items-center gap-3">
+                <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-pink-500 via-purple-600 to-cyan-400 flex items-center justify-center text-white text-2xl shadow-lg border border-white/30">
+                    ⚔️
+                </div>
+                <div>
+                    <h1 class="text-xl md:text-2xl font-ninja-title text-transparent bg-clip-text bg-gradient-to-r from-pink-400 via-yellow-300 to-cyan-300">
+                        SLICE NINJA ACADEMY
+                    </h1>
+                    <p class="text-xs text-cyan-200 font-semibold tracking-wide">Pentas Digital Apresiasi Seni (Tahun 3)</p>
+                </div>
+            </div>
+
+            <!-- Lives & Score HUD -->
+            <div id="hudStats" class="flex items-center gap-4 md:gap-8">
+                <!-- Hearts / Lives -->
+                <div class="flex items-center gap-2 bg-slate-900/80 px-4 py-2 rounded-xl border border-pink-500/30">
+                    <span class="text-xs font-black text-pink-300 mr-1 hidden sm:inline">NYAWA:</span>
+                    <div id="livesContainer" class="flex gap-1 text-2xl">
+                        <i class="fa-solid fa-heart text-pink-500 drop-shadow-[0_0_8px_rgba(255,46,147,0.8)]"></i>
+                        <i class="fa-solid fa-heart text-pink-500 drop-shadow-[0_0_8px_rgba(255,46,147,0.8)]"></i>
+                        <i class="fa-solid fa-heart text-pink-500 drop-shadow-[0_0_8px_rgba(255,46,147,0.8)]"></i>
+                    </div>
+                </div>
+
+                <!-- Score -->
+                <div class="flex items-center gap-2 bg-slate-900/80 px-5 py-2 rounded-xl border border-yellow-500/40">
+                    <i class="fa-solid fa-trophy text-yellow-400 text-xl"></i>
+                    <div>
+                        <span class="text-[10px] text-yellow-300/80 block font-bold leading-none">SKOR</span>
+                        <span id="scoreDisplay" class="font-ninja text-2xl text-yellow-300 leading-none">0</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Camera Status Button -->
+            <button id="toggleCamBtn" onclick="toggleWebcam()" class="px-4 py-2 rounded-xl bg-purple-600/90 hover:bg-purple-500 text-xs font-bold flex items-center gap-2 transition-all border border-purple-300/40 shadow-lg cursor-pointer">
+                <i id="camIcon" class="fa-solid fa-video"></i>
+                <span id="camBtnText">Aktifkan Kamera</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Floating Current Question Banner (Top Center below HUD) -->
+    <div id="questionBanner" class="relative z-30 max-w-4xl mx-auto w-full px-4 mt-2 transition-all duration-300 pointer-events-none">
+        <div class="glass-hud rounded-2xl p-4 md:p-5 text-center border-2 border-yellow-400/50 shadow-2xl relative overflow-hidden">
+            <div class="absolute -top-10 -left-10 w-24 h-24 bg-pink-500/30 rounded-full blur-xl"></div>
+            <div class="absolute -bottom-10 -right-10 w-24 h-24 bg-cyan-500/30 rounded-full blur-xl"></div>
+            
+            <div class="inline-block bg-gradient-to-r from-pink-600 to-purple-600 text-white font-extrabold text-xs px-3 py-1 rounded-full uppercase tracking-wider mb-2 border border-white/20">
+                <span id="questionNumText">Soalan 1 / 5</span> (20 Markah)
+            </div>
+            
+            <h2 id="questionText" class="text-xl md:text-3xl font-black text-yellow-300 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] leading-snug">
+                Memuatkan Soalan Ninja...
+            </h2>
+
+            <div class="mt-2 text-xs font-bold text-cyan-300 flex items-center justify-center gap-2">
+                <span>⚔️ TEBAS/SLICE BUAH DENGAN JAWAPAN YANG BETUL!</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN MENU / START GAME MODAL -->
+    <div id="startModal" class="fixed inset-0 z-40 bg-slate-950/90 flex items-center justify-center p-4">
+        <div class="glass-hud rounded-3xl p-6 md:p-10 max-w-2xl w-full text-center relative border-2 border-pink-500/40 shadow-2xl">
+            
+            <div class="w-24 h-24 mx-auto rounded-3xl bg-gradient-to-br from-pink-500 via-yellow-400 to-cyan-400 p-1 mb-4 shadow-2xl animate-bounce">
+                <div class="w-full h-full bg-slate-900 rounded-[22px] flex items-center justify-center text-5xl">
+                    🥷
+                </div>
+            </div>
+
+            <h2 class="text-3xl md:text-5xl font-ninja-title text-transparent bg-clip-text bg-gradient-to-r from-pink-400 via-yellow-300 to-cyan-300 mb-2">
+                SLICE NINJA ACADEMY
+            </h2>
+            <p class="text-cyan-200 text-sm md:text-base font-medium max-w-lg mx-auto">
+                Tunjukkan kehebatan Ninja anda! Gunakan jari telunjuk di hadapan webcam untuk <strong>TEBAS (SLICE)</strong> buah jawapan yang betul di udara!
+            </p>
+
+            <!-- Instructions Card -->
+            <div class="my-6 bg-slate-900/80 rounded-2xl p-4 text-left border border-white/10 space-y-3">
+                <h3 class="text-yellow-300 font-bold text-sm md:text-base flex items-center gap-2">
+                    <i class="fa-solid fa-wand-magic-sparkles text-pink-400"></i> Cara Bermain:
+                </h3>
+                <ul class="space-y-2 text-xs md:text-sm text-slate-200">
+                    <li class="flex items-start gap-2">
+                        <span class="bg-pink-500/30 text-pink-300 font-bold w-5 h-5 rounded-full flex items-center justify-center shrink-0 text-xs">1</span>
+                        <span>Aktifkan <strong>Kamera Webcam</strong> & gerakkan jari telunjuk anda.</span>
+                    </li>
+                    <li class="flex items-start gap-2">
+                        <span class="bg-yellow-500/30 text-yellow-300 font-bold w-5 h-5 rounded-full flex items-center justify-center shrink-0 text-xs">2</span>
+                        <span>Hayunkan kursor bilah ninja merentasi buah jawapan yang betul untuk memotongnya!</span>
+                    </li>
+                    <li class="flex items-start gap-2">
+                        <span class="bg-cyan-500/30 text-cyan-300 font-bold w-5 h-5 rounded-full flex items-center justify-center shrink-0 text-xs">3</span>
+                        <span>Selesaikan 5 soalan (20 markah setiap soalan). Elakkan menebas jawapan salah kerana anda hanya ada 3 nyawa!</span>
+                    </li>
+                </ul>
+            </div>
+
+            <!-- Start Button -->
+            <button onclick="startGame()" class="w-full sm:w-auto px-10 py-4 rounded-2xl bg-gradient-to-r from-pink-500 via-purple-600 to-cyan-500 hover:from-pink-400 hover:to-cyan-400 text-white font-ninja-title text-xl md:text-2xl shadow-xl hover:scale-105 active:scale-95 transition-all cursor-pointer">
+                <i class="fa-solid fa-play mr-2"></i> MULA MAIN SEKARANG
+            </button>
+
+            <!-- Camera Permission Hint -->
+            <p id="camStatusHint" class="text-xs text-slate-400 mt-4">
+                <i class="fa-solid fa-circle-info text-cyan-400 mr-1"></i> Disokong oleh Google MediaPipe Hands. Tetikus / Skrin sentuh juga disokong!
+            </p>
+        </div>
+    </div>
+
+    <!-- RESULT / END GAME MODAL -->
+    <div id="resultModal" class="hidden fixed inset-0 z-40 bg-slate-950/90 flex items-center justify-center p-4">
+        <div class="glass-hud rounded-3xl p-6 md:p-10 max-w-xl w-full text-center relative border-2 border-yellow-400/50 shadow-2xl">
+            
+            <div id="resultEmoji" class="text-7xl mb-3 animate-bounce">
+                🏆
+            </div>
+
+            <h2 id="resultTitle" class="text-3xl md:text-5xl font-ninja-title text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-pink-400 to-cyan-300">
+                TAHNIAH NINJA!
+            </h2>
+            <p id="resultSubtitle" class="text-slate-300 text-sm md:text-base mt-2">
+                Anda telah berjaya menyelesaikan Pentas Digital Apresiasi Seni!
+            </p>
+
+            <!-- Final Score Display -->
+            <div class="bg-slate-900/90 rounded-2xl p-6 my-6 border border-white/10">
+                <span class="text-xs text-cyan-300 font-bold tracking-wider block uppercase">JUMLAH MARKAH AKHIR</span>
+                <span id="finalScoreText" class="font-ninja text-5xl md:text-6xl text-yellow-300 my-1 block">100 / 100</span>
+                <span id="resultBadge" class="inline-block bg-pink-500/30 text-pink-300 font-bold text-xs px-3 py-1 rounded-full border border-pink-500/40">
+                    MASTER SLICE NINJA
+                </span>
+            </div>
+
+            <!-- Feedback Message -->
+            <div id="resultFeedback" class="text-xs md:text-sm text-cyan-100 bg-purple-900/40 p-4 rounded-xl border border-purple-500/30 italic mb-6">
+                "Syabas! Anda menguasai Penanda Buku Alam, Teknik Kolaj, Bahasa Seni Visual, Unsur Seni dan Prinsip Rekaan dengan cemerlang!"
+            </div>
+
+            <!-- Play Again Button -->
+            <button onclick="resetGame()" class="w-full sm:w-auto px-10 py-4 rounded-2xl bg-gradient-to-r from-yellow-400 via-pink-500 to-purple-600 hover:from-yellow-300 hover:to-purple-500 text-slate-950 font-ninja-title text-xl md:text-2xl shadow-2xl hover:scale-105 active:scale-95 transition-all cursor-pointer">
+                <i class="fa-solid fa-rotate-right mr-2"></i> MAIN SEMULA
+            </button>
+        </div>
+    </div>
+
+    <script>
+        /* Interactive Web Audio Synthesizer (No external audio assets needed) */
+        class NinjaAudio {
+            constructor() {
+                this.ctx = null;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    if (AudioCtx) this.ctx = new AudioCtx();
+                }
+                if (this.ctx && this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+            }
+
+            /* Blade Slice Whoosh Sound */
+            playWhoosh() {
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(800, now);
+                osc.frequency.exponentialRampToValueAtTime(150, now + 0.12);
+
+                gain.gain.setValueAtTime(0.15, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.12);
+            }
+
+            /* Correct Fruit Cut Splat Sound */
+            playCorrectSlice() {
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+                
+                // Arpeggio chime
+                const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
+                notes.forEach((freq, idx) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(freq, now + idx * 0.06);
+                    gain.gain.setValueAtTime(0.2, now + idx * 0.06);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.06 + 0.2);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now + idx * 0.06);
+                    osc.stop(now + idx * 0.06 + 0.2);
+                });
+            }
+
+            /* Wrong Fruit Cut Splat Sound */
+            playWrongSlice() {
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(160, now);
+                osc.frequency.exponentialRampToValueAtTime(60, now + 0.35);
+
+                gain.gain.setValueAtTime(0.3, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.35);
+            }
+
+            /* Victory Fanfare */
+            playVictory() {
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+                const arpeggio = [440, 554.37, 659.25, 880, 1108.73, 1318.51];
+                arpeggio.forEach((freq, i) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(freq, now + i * 0.1);
+                    gain.gain.setValueAtTime(0.25, now + i * 0.1);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.1 + 0.3);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now + i * 0.1);
+                    osc.stop(now + i * 0.1 + 0.3);
+                });
+            }
+        }
+
+        const ninjaAudio = new NinjaAudio();
+    </script>
+
+    <script>
+        /* -------------------------------------------------------------
+           QUESTIONS DATASET (5 Questions - 20 Marks Each)
+           Fruit Mappings:
+           - BUAH TEMBIKAI (Watermelon)
+           - BUAH PISANG (Banana)
+           - BUAH EPAL (Apple)
+           ------------------------------------------------------------- */
+        const QUESTIONS = [
+            {
+                id: 1,
+                question: "1. HARI INI SAYA MEMBUAT ______.",
+                options: [
+                    { fruitType: "watermelon", text: "PENANDA BUKU ALAM", isCorrect: true },
+                    { fruitType: "banana", text: "POSTER ALAM SEKITAR", isCorrect: false },
+                    { fruitType: "apple", text: "KAD UCAPAN ALAM SEKITAR", isCorrect: false }
+                ]
+            },
+            {
+                id: 2,
+                question: "2. SAYA MEMBUAT PENANDA BUKU ALAM MENGGUNAKAN TEKNIK ___.",
+                options: [
+                    { fruitType: "watermelon", text: "TEKNIK MONTAJ", isCorrect: false },
+                    { fruitType: "banana", text: "TEKNIK KOLAJ", isCorrect: true },
+                    { fruitType: "apple", text: "TEKNIK ANYAMAN", isCorrect: false }
+                ]
+            },
+            {
+                id: 3,
+                question: "3. TERDAPAT ___ BAHASA SENI VISUAL PADA PENANDA BUKU ALAM.",
+                options: [
+                    { fruitType: "watermelon", text: "6", isCorrect: false },
+                    { fruitType: "banana", text: "4", isCorrect: true },
+                    { fruitType: "apple", text: "8", isCorrect: false }
+                ]
+            },
+            {
+                id: 4,
+                question: "4. 2 UNSUR SENI VISUAL YANG ADA PADA PENANDA BUKU ADALAH _____",
+                options: [
+                    { fruitType: "watermelon", text: "WARNA DAN GARISAN", isCorrect: false },
+                    { fruitType: "banana", text: "BENTUK DAN RUANG", isCorrect: false },
+                    { fruitType: "apple", text: "WARNA DAN JALINAN", isCorrect: true }
+                ]
+            },
+            {
+                id: 5,
+                question: "5. 2 PRINSIP REKAAN YANG ADA PADA PENANDA BUKU ADALAH _____",
+                options: [
+                    { fruitType: "watermelon", text: "IMBANGAN DAN HARMONI", isCorrect: false },
+                    { fruitType: "banana", text: "KONTRA DAN IMBANGAN", isCorrect: false },
+                    { fruitType: "apple", text: "KEPELBAGAIAN DAN KONTRA", isCorrect: true }
+                ]
+            }
+        ];
+
+        /* Game Variables */
+        let currentQuestionIndex = 0;
+        let score = 0;
+        let lives = 3;
+        let isGameActive = false;
+
+        /* Canvas & Rendering */
+        let canvas, ctx;
+        let fruits = [];
+        let particles = [];
+        let bladeTrail = []; // Finger trail points {x, y, time}
+
+        /* Finger Tracking Cursor */
+        let fingerPos = { x: -100, y: -100 };
+        let prevFingerPos = { x: -100, y: -100 };
+
+        /* MediaPipe Instances */
+        let handsObj = null;
+        let cameraObj = null;
+        let isWebcamActive = false;
+    </script>
+
+    <script>
+        /* Fruit Object Class */
+        class Fruit {
+            constructor(x, y, vx, vy, fruitType, text, isCorrect) {
+                this.x = x;
+                this.y = y;
+                this.vx = vx;
+                this.vy = vy;
+                this.radius = 65; // Size radius
+                this.fruitType = fruitType; // "watermelon", "banana", "apple"
+                this.text = text;
+                this.isCorrect = isCorrect;
+                this.isSliced = false;
+                this.sliceAngle = 0;
+                
+                // Floating wiggle motion variables
+                this.wiggleOffset = Math.random() * Math.PI * 2;
+                this.rotation = (Math.random() - 0.5) * 0.2;
+                this.currentRotation = 0;
+
+                // Halves physics if sliced
+                this.sliceLeft = null;
+                this.sliceRight = null;
+            }
+
+            update(width, height) {
+                if (!this.isSliced) {
+                    // Update positions with floating momentum
+                    this.x += this.vx;
+                    this.y += this.vy;
+
+                    // Bounce off sides
+                    if (this.x - this.radius < 20 || this.x + this.radius > width - 20) {
+                        this.vx *= -1;
+                    }
+                    if (this.y - this.radius < 120 || this.y + this.radius > height - 60) {
+                        this.vy *= -1;
+                    }
+
+                    // Floating slight sine wave
+                    this.wiggleOffset += 0.03;
+                    this.currentRotation += Math.sin(this.wiggleOffset) * 0.005;
+                } else {
+                    // Sliced halves physics
+                    if (this.sliceLeft && this.sliceRight) {
+                        this.sliceLeft.x += this.sliceLeft.vx;
+                        this.sliceLeft.y += this.sliceLeft.vy;
+                        this.sliceLeft.vy += 0.4; // Gravity
+                        this.sliceLeft.rot += 0.05;
+
+                        this.sliceRight.x += this.sliceRight.vx;
+                        this.sliceRight.y += this.sliceRight.vy;
+                        this.sliceRight.vy += 0.4; // Gravity
+                        this.sliceRight.rot -= 0.05;
+                    }
+                }
+            }
+
+            draw(ctx) {
+                ctx.save();
+
+                if (!this.isSliced) {
+                    ctx.translate(this.x, this.y);
+                    ctx.rotate(this.currentRotation);
+
+                    // Draw Fruit Base Graphic
+                    this.drawFruitGraphic(ctx, 0, 0, this.radius, this.fruitType);
+
+                    // Draw Answer Text Badge below/inside fruit
+                    ctx.restore();
+                    this.drawTextOverlay(ctx);
+                } else {
+                    // Draw sliced halves falling apart
+                    if (this.sliceLeft) {
+                        ctx.save();
+                        ctx.translate(this.sliceLeft.x, this.sliceLeft.y);
+                        ctx.rotate(this.sliceLeft.rot);
+                        this.drawHalfFruit(ctx, this.fruitType, 'left');
+                        ctx.restore();
+                    }
+                    if (this.sliceRight) {
+                        ctx.save();
+                        ctx.translate(this.sliceRight.x, this.sliceRight.y);
+                        ctx.rotate(this.sliceRight.rot);
+                        this.drawHalfFruit(ctx, this.fruitType, 'right');
+                        ctx.restore();
+                    }
+                    ctx.restore();
+                }
+            }
+
+            drawFruitGraphic(ctx, x, y, r, type) {
+                ctx.save();
+                ctx.beginPath();
+
+                if (type === 'watermelon') {
+                    // Green striped rind
+                    ctx.arc(x, y, r, 0, Math.PI * 2);
+                    ctx.fillStyle = '#2e7d32';
+                    ctx.fill();
+                    ctx.lineWidth = 6;
+                    ctx.strokeStyle = '#1b5e20';
+                    ctx.stroke();
+
+                    // Juicy Red Center
+                    ctx.beginPath();
+                    ctx.arc(x, y, r * 0.82, 0, Math.PI * 2);
+                    ctx.fillStyle = '#ff1744';
+                    ctx.fill();
+
+                    // Black Seeds
+                    ctx.fillStyle = '#000000';
+                    const seeds = [
+                        {x: -18, y: -12}, {x: 18, y: -12},
+                        {x: -22, y: 15}, {x: 22, y: 15},
+                        {x: 0, y: -25}, {x: 0, y: 25}
+                    ];
+                    seeds.forEach(s => {
+                        ctx.beginPath();
+                        ctx.arc(x + s.x, y + s.y, 3.5, 0, Math.PI * 2);
+                        ctx.fill();
+                    });
+
+                } else if (type === 'banana') {
+                    // Curved Golden Banana
+                    ctx.fillStyle = '#ffd600';
+                    ctx.strokeStyle = '#f57f17';
+                    ctx.lineWidth = 4;
+                    
+                    ctx.beginPath();
+                    ctx.ellipse(x, y, r * 1.1, r * 0.65, -0.2, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.stroke();
+
+                    // Banana tip
+                    ctx.fillStyle = '#4e342e';
+                    ctx.beginPath();
+                    ctx.arc(x - r * 0.9, y - r * 0.2, 7, 0, Math.PI * 2);
+                    ctx.fill();
+
+                } else if (type === 'apple') {
+                    // Shiny Red Apple
+                    ctx.fillStyle = '#d50000';
+                    ctx.strokeStyle = '#b71c1c';
+                    ctx.lineWidth = 5;
+
+                    ctx.beginPath();
+                    ctx.arc(x - r * 0.25, y - r * 0.1, r * 0.7, 0, Math.PI * 2);
+                    ctx.arc(x + r * 0.25, y - r * 0.1, r * 0.7, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.stroke();
+
+                    // Brown Stem & Leaf
+                    ctx.fillStyle = '#5d4037';
+                    ctx.fillRect(x - 3, y - r - 8, 6, 14);
+
+                    ctx.fillStyle = '#76ff03';
+                    ctx.beginPath();
+                    ctx.ellipse(x + 8, y - r - 4, 10, 5, 0.4, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                // Shiny Gloss highlight
+                ctx.beginPath();
+                ctx.arc(x - r * 0.35, y - r * 0.35, r * 0.2, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
+                ctx.fill();
+
+                ctx.restore();
+            }
+
+            drawTextOverlay(ctx) {
+                ctx.save();
+                // Text background capsule badge
+                const fontHeight = 16;
+                ctx.font = '900 15px Outfit, sans-serif';
+                const textWidth = ctx.measureText(this.text).width;
+                const paddingX = 18;
+                const paddingY = 10;
+
+                const badgeX = this.x - textWidth / 2 - paddingX / 2;
+                const badgeY = this.y + this.radius + 8;
+
+                // Draw Badge Frame
+                ctx.fillStyle = 'rgba(15, 23, 42, 0.95)';
+                ctx.strokeStyle = this.getFruitThemeColor(this.fruitType);
+                ctx.lineWidth = 3;
+                
+                ctx.beginPath();
+                ctx.roundRect(badgeX, badgeY, textWidth + paddingX, fontHeight + paddingY, 12);
+                ctx.fill();
+                ctx.stroke();
+
+                // Draw Text
+                ctx.fillStyle = '#FFFFFF';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(this.text, this.x, badgeY + (fontHeight + paddingY) / 2);
+
+                ctx.restore();
+            }
+
+            drawHalfFruit(ctx, type, side) {
+                const r = this.radius;
+                ctx.save();
+                ctx.clip();
+                ctx.beginPath();
+                if (side === 'left') {
+                    ctx.rect(-r * 1.5, -r * 1.5, r * 1.5, r * 3);
+                } else {
+                    ctx.rect(0, -r * 1.5, r * 1.5, r * 3);
+                }
+                ctx.clip();
+
+                this.drawFruitGraphic(ctx, 0, 0, r, type);
+                ctx.restore();
+            }
+
+            getFruitThemeColor(type) {
+                if (type === 'watermelon') return '#FF2E93';
+                if (type === 'banana') return '#FFD200';
+                return '#FF1744';
+            }
+
+            slice(angle, sliceX, sliceY) {
+                this.isSliced = true;
+                this.sliceAngle = angle;
+
+                // Create 2 half fruit objects
+                const speed = 6;
+                this.sliceLeft = {
+                    x: this.x,
+                    y: this.y,
+                    vx: -Math.cos(angle) * speed - 2,
+                    vy: -Math.sin(angle) * speed - 2,
+                    rot: 0
+                };
+                this.sliceRight = {
+                    x: this.x,
+                    y: this.y,
+                    vx: Math.cos(angle) * speed + 2,
+                    vy: Math.sin(angle) * speed - 2,
+                    rot: 0
+                };
+
+                // Spawn Particles Burst
+                spawnJuiceParticles(sliceX, sliceY, this.getFruitThemeColor(this.fruitType));
+            }
+        }
+
+        /* Particle Splash Effects */
+        class JuiceParticle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.color = color;
+                this.radius = Math.random() * 6 + 3;
+                const angle = Math.random() * Math.PI * 2;
+                const speed = Math.random() * 10 + 3;
+                this.vx = Math.cos(angle) * speed;
+                this.vy = Math.sin(angle) * speed;
+                this.alpha = 1;
+                this.gravity = 0.35;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vy += this.gravity;
+                this.alpha -= 0.025;
+            }
+
+            draw(ctx) {
+                ctx.save();
+                ctx.globalAlpha = Math.max(0, this.alpha);
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        function spawnJuiceParticles(x, y, color) {
+            for (let i = 0; i < 25; i++) {
+                particles.push(new JuiceParticle(x, y, color));
+            }
+        }
+    </script>
+
+    <script>
+        /* Initialize MediaPipe Hands */
+        function initMediaPipe() {
+            const videoElement = document.getElementById('webcamVideo');
+
+            handsObj = new Hands({
+                locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+            });
+
+            handsObj.setOptions({
+                maxNumHands: 1,
+                modelComplexity: 1,
+                minDetectionConfidence: 0.65,
+                minTrackingConfidence: 0.65
+            });
+
+            handsObj.onResults((results) => {
+                if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                    const landmarks = results.multiHandLandmarks[0];
+                    
+                    // Landmark 8 is the Index Finger Tip
+                    const indexTip = landmarks[8];
+
+                    // Convert mirrored camera coords to screen coords
+                    const screenX = (1 - indexTip.x) * canvas.width;
+                    const screenY = indexTip.y * canvas.height;
+
+                    // Smooth transition (lerp)
+                    prevFingerPos.x = fingerPos.x;
+                    prevFingerPos.y = fingerPos.y;
+
+                    fingerPos.x += (screenX - fingerPos.x) * 0.5;
+                    fingerPos.y += (screenY - fingerPos.y) * 0.5;
+
+                    // Add point to Blade Trail
+                    bladeTrail.push({
+                        x: fingerPos.x,
+                        y: fingerPos.y,
+                        time: performance.now()
+                    });
+                }
+            });
+        }
+
+        /* Toggle Webcam Feed */
+        async function toggleWebcam() {
+            ninjaAudio.init();
+            const btnText = document.getElementById('camBtnText');
+            const camIcon = document.getElementById('camIcon');
+
+            if (isWebcamActive) {
+                if (cameraObj) await cameraObj.stop();
+                isWebcamActive = false;
+                btnText.innerText = 'Aktifkan Kamera';
+                camIcon.className = 'fa-solid fa-video';
+            } else {
+                try {
+                    btnText.innerText = 'Memuatkan...';
+                    if (!handsObj) initMediaPipe();
+
+                    const videoElement = document.getElementById('webcamVideo');
+                    cameraObj = new Camera(videoElement, {
+                        onFrame: async () => {
+                            await handsObj.send({ image: videoElement });
+                        },
+                        width: 1280,
+                        height: 720
+                    });
+
+                    await cameraObj.start();
+                    isWebcamActive = true;
+                    btnText.innerText = 'Kamera Aktif';
+                    camIcon.className = 'fa-solid fa-video-slash text-green-400';
+                } catch (err) {
+                    console.error('Kamera Error:', err);
+                    btnText.innerText = 'Gagal Kamera';
+                    alert('Tidak dapat mengaktifkan kamera. Anda boleh terus bermain guna tetikus/skrin sentuh!');
+                }
+            }
+        }
+
+        /* Line Segment vs Circle Collision Detection for Slicing */
+        function checkSliceCollision(p1, p2, fruit) {
+            if (fruit.isSliced) return false;
+
+            // Distance between line segment (p1, p2) and fruit center
+            const dx = p2.x - p1.x;
+            const dy = p2.y - p1.y;
+            const len = Math.sqrt(dx * dx + dy * dy);
+
+            if (len < 5) return false; // Must be a deliberate slice motion
+
+            const u = ((fruit.x - p1.x) * dx + (fruit.y - p1.y) * dy) / (len * len);
+            const clampedU = Math.max(0, Math.min(1, u));
+
+            const nearestX = p1.x + clampedU * dx;
+            const nearestY = p1.y + clampedU * dy;
+
+            const dist = Math.sqrt((fruit.x - nearestX) ** 2 + (fruit.y - nearestY) ** 2);
+
+            return dist < fruit.radius;
+        }
+    </script>
+
+    <script>
+        /* Setup Canvas and Animation Loop */
+        window.onload = function() {
+            canvas = document.getElementById('gameCanvas');
+            ctx = canvas.getContext('2d');
+
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+
+            setupMouseTouchEvents();
+
+            // Start Main Game Render Loop
+            requestAnimationFrame(gameLoop);
+        };
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        /* Mouse & Touch Slicing Fallback */
+        let isMouseDown = false;
+
+        function setupMouseTouchEvents() {
+            window.addEventListener('mousemove', (e) => {
+                if (!isWebcamActive) {
+                    prevFingerPos.x = fingerPos.x;
+                    prevFingerPos.y = fingerPos.y;
+                    fingerPos.x = e.clientX;
+                    fingerPos.y = e.clientY;
+
+                    if (isMouseDown) {
+                        bladeTrail.push({
+                            x: fingerPos.x,
+                            y: fingerPos.y,
+                            time: performance.now()
+                        });
+                    }
+                }
+            });
+
+            window.addEventListener('mousedown', (e) => {
+                ninjaAudio.init();
+                isMouseDown = true;
+                fingerPos.x = e.clientX;
+                fingerPos.y = e.clientY;
+            });
+
+            window.addEventListener('mouseup', () => {
+                isMouseDown = false;
+            });
+
+            window.addEventListener('touchmove', (e) => {
+                if (!isWebcamActive && e.touches.length > 0) {
+                    prevFingerPos.x = fingerPos.x;
+                    prevFingerPos.y = fingerPos.y;
+                    fingerPos.x = e.touches[0].clientX;
+                    fingerPos.y = e.touches[0].clientY;
+
+                    bladeTrail.push({
+                        x: fingerPos.x,
+                        y: fingerPos.y,
+                        time: performance.now()
+                    });
+                }
+            }, { passive: true });
+
+            window.addEventListener('touchstart', (e) => {
+                ninjaAudio.init();
+                if (!isWebcamActive && e.touches.length > 0) {
+                    fingerPos.x = e.touches[0].clientX;
+                    fingerPos.y = e.touches[0].clientY;
+                }
+            }, { passive: true });
+        }
+
+        /* Start Game */
+        function startGame() {
+            ninjaAudio.init();
+            currentQuestionIndex = 0;
+            score = 0;
+            lives = 3;
+            isGameActive = true;
+
+            document.getElementById('startModal').classList.add('hidden');
+            document.getElementById('resultModal').classList.add('hidden');
+
+            updateHUD();
+            spawnQuestionFruits();
+        }
+
+        /* Spawn 3 Fruits corresponding to current question options */
+        function spawnQuestionFruits() {
+            fruits = [];
+            const q = QUESTIONS[currentQuestionIndex];
+
+            document.getElementById('questionNumText').innerText = `Soalan ${currentQuestionIndex + 1} / 5`;
+            document.getElementById('questionText').innerText = q.question;
+
+            const w = canvas.width;
+            const h = canvas.height;
+
+            // Define 3 spread out initial position slots across screen
+            const slots = [
+                { x: w * 0.25, y: h * 0.55 },
+                { x: w * 0.50, y: h * 0.60 },
+                { x: w * 0.75, y: h * 0.55 }
+            ];
+
+            // Shuffle options slightly so position isn't predictable
+            const shuffledOptions = shuffleArray([...q.options]);
+
+            shuffledOptions.forEach((opt, idx) => {
+                const slot = slots[idx];
+                const vx = (Math.random() - 0.5) * 2;
+                const vy = (Math.random() - 0.5) * 2;
+
+                fruits.push(new Fruit(
+                    slot.x, slot.y, vx, vy, opt.fruitType, opt.text, opt.isCorrect
+                ));
+            });
+        }
+
+        /* Main Game Animation Loop */
+        function gameLoop(timestamp) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 1. Draw Live Webcam Feed onto Canvas background (Mirrored)
+            const video = document.getElementById('webcamVideo');
+            if (isWebcamActive && video.readyState === 4) {
+                ctx.save();
+                ctx.translate(canvas.width, 0);
+                ctx.scale(-1, 1); // Mirror feed naturally
+                ctx.globalAlpha = 0.45; // Subtle camera background opacity
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                ctx.restore();
+            }
+
+            if (isGameActive) {
+                // 2. Update & Draw Fruits
+                fruits.forEach(fruit => {
+                    fruit.update(canvas.width, canvas.height);
+                    fruit.draw(ctx);
+                });
+
+                // 3. Update & Draw Juice Particles
+                for (let i = particles.length - 1; i >= 0; i--) {
+                    particles[i].update();
+                    particles[i].draw(ctx);
+                    if (particles[i].alpha <= 0) particles.splice(i, 1);
+                }
+
+                // 4. Check Slicing Collision between Blade Trail and Fruits
+                if (bladeTrail.length >= 2) {
+                    const p1 = bladeTrail[bladeTrail.length - 2];
+                    const p2 = bladeTrail[bladeTrail.length - 1];
+
+                    fruits.forEach(fruit => {
+                        if (checkSliceCollision(p1, p2, fruit)) {
+                            const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+                            fruit.slice(angle, p2.x, p2.y);
+                            handleFruitSlice(fruit);
+                        }
+                    });
+                }
+            }
+
+            // 5. Clean up old Blade Trail points
+            const now = performance.now();
+            bladeTrail = bladeTrail.filter(pt => now - pt.time < 200);
+
+            // 6. Draw Glowing Ninja Blade Trail
+            drawBladeTrail(ctx);
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        /* Render Ninja Blade Slash Trail */
+        function drawBladeTrail(ctx) {
+            if (bladeTrail.length < 2) return;
+
+            ctx.save();
+            ctx.beginPath();
+            ctx.moveTo(bladeTrail[0].x, bladeTrail[0].y);
+
+            for (let i = 1; i < bladeTrail.length; i++) {
+                ctx.lineTo(bladeTrail[i].x, bladeTrail[i].y);
+            }
+
+            // Glowing Magenta / Cyan Laser Blade
+            ctx.strokeStyle = '#00E5FF';
+            ctx.lineWidth = 8;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.shadowColor = '#FF2E93';
+            ctx.shadowBlur = 15;
+            ctx.stroke();
+
+            // Inner White Hot Core
+            ctx.strokeStyle = '#FFFFFF';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+
+            ctx.restore();
+        }
+
+        /* Handle Fruit Slice Evaluation */
+        function handleFruitSlice(fruit) {
+            const overlay = document.getElementById('flashOverlay');
+            const mainBody = document.body;
+
+            if (fruit.isCorrect) {
+                // CORRECT FRUIT CUT! (+20 Marks)
+                ninjaAudio.playCorrectSlice();
+                score += 20;
+
+                overlay.className = 'fixed inset-0 pointer-events-none z-50 flash-green-screen';
+                setTimeout(() => overlay.className = 'fixed inset-0 pointer-events-none z-50', 500);
+
+                updateHUD();
+
+                // Advance to next question after short split delay
+                setTimeout(() => {
+                    currentQuestionIndex++;
+                    if (currentQuestionIndex < QUESTIONS.length) {
+                        spawnQuestionFruits();
+                    } else {
+                        endGame(true);
+                    }
+                }, 800);
+
+            } else {
+                // WRONG FRUIT CUT! (-1 Life)
+                ninjaAudio.playWrongSlice();
+                lives--;
+
+                overlay.className = 'fixed inset-0 pointer-events-none z-50 flash-red-screen';
+                mainBody.classList.add('shake-screen');
+
+                setTimeout(() => {
+                    overlay.className = 'fixed inset-0 pointer-events-none z-50';
+                    mainBody.classList.remove('shake-screen');
+                }, 500);
+
+                updateHUD();
+
+                if (lives <= 0) {
+                    setTimeout(() => endGame(false), 800);
+                }
+            }
+        }
+
+        /* Update HUD Hearts & Score */
+        function updateHUD() {
+            document.getElementById('scoreDisplay').innerText = score;
+
+            const container = document.getElementById('livesContainer');
+            container.innerHTML = '';
+            for (let i = 0; i < 3; i++) {
+                if (i < lives) {
+                    container.innerHTML += '<i class="fa-solid fa-heart text-pink-500 drop-shadow-[0_0_8px_rgba(255,46,147,0.8)]"></i>';
+                } else {
+                    container.innerHTML += '<i class="fa-solid fa-heart text-slate-700"></i>';
+                }
+            }
+        }
+
+        /* End Game Screen */
+        function endGame(isVictory) {
+            isGameActive = false;
+
+            const resultModal = document.getElementById('resultModal');
+            const resultEmoji = document.getElementById('resultEmoji');
+            const resultTitle = document.getElementById('resultTitle');
+            const resultSubtitle = document.getElementById('resultSubtitle');
+            const finalScoreText = document.getElementById('finalScoreText');
+            const resultBadge = document.getElementById('resultBadge');
+            const resultFeedback = document.getElementById('resultFeedback');
+
+            finalScoreText.innerText = `${score} / 100`;
+            resultModal.classList.remove('hidden');
+
+            if (isVictory) {
+                ninjaAudio.playVictory();
+                triggerConfetti();
+
+                resultEmoji.innerText = '🏆';
+                resultTitle.innerText = 'TAHNIAH SLICE NINJA!';
+                resultSubtitle.innerText = 'Anda telah menyelesaikan kelima-lima soalan Apresiasi Seni!';
+                resultBadge.innerText = 'MASTER NINJA APRESIASI';
+                resultBadge.className = 'inline-block bg-green-500/30 text-green-300 font-bold text-xs px-3 py-1 rounded-full border border-green-500/40';
+                
+                resultFeedback.innerText = '"Syabas! Anda telah berjaya mengenal pasti Penanda Buku Alam, Teknik Kolaj, 4 Bahasa Seni Visual, Unsur Warna & Jalinan, serta Prinsip Kepelbagaian & Kontra dengan cemerlang!"';
+            } else {
+                resultEmoji.innerText = '⚔️';
+                resultTitle.innerText = 'CUBA LAGI NINJA!';
+                resultTitle.innerText = 'NYAWA ANDA TELAH HABIS!';
+                resultSubtitle.innerText = 'Jangan berputus asa. Ulangi latihan untuk menguasai soalan seni!';
+                resultBadge.innerText = 'LATIHAN DITERUSKAN';
+                resultBadge.className = 'inline-block bg-pink-500/30 text-pink-300 font-bold text-xs px-3 py-1 rounded-full border border-pink-500/40';
+
+                resultFeedback.innerText = '"Ingat: Penanda buku menggunakan Teknik Kolaj, ada 4 Bahasa Seni Visual, Unsur Warna & Jalinan, serta Prinsip Kepelbagaian & Kontra!"';
+            }
+        }
+
+        /* Reset Game */
+        function resetGame() {
+            document.getElementById('resultModal').classList.add('hidden');
+            startGame();
+        }
+
+        /* Utility Shuffle */
+        function shuffleArray(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
+
+        /* Confetti Burst */
+        function triggerConfetti() {
+            if (typeof confetti === 'function') {
+                confetti({
+                    particleCount: 120,
+                    spread: 80,
+                    origin: { y: 0.6 }
+                });
+            }
+        }
+    </script>
+</body>
+</html>
